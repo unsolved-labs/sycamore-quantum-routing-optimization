@@ -1,0 +1,40 @@
+{
+  "release": "R005",
+  "instance": "vqe_8_4_10_100_on_sycamore54",
+  "baseline": {
+    "source": "Shaik and van de Pol, SAT 2024, Table 3",
+    "q_synth2": "timeout",
+    "tb_olsq2_swaps": 16,
+    "tb_olsq2_depth": 111
+  },
+  "result": {
+    "swaps": 13,
+    "inserted_swap_reduction": 3,
+    "inserted_swap_reduction_percent": 18.75,
+    "added_cx_if_three_per_swap": 39,
+    "baseline_added_cx_if_three_per_swap": 48,
+    "native_instruction_dag_depth": 110
+  },
+  "source": {
+    "repository": "irfansha/Q-Synth",
+    "commit": "95a820e16ac578289ea692ce8665afb48788892d",
+    "path": "Benchmarks/SAT-24/VQE/vqe_8_4_10_100.qasm",
+    "git_blob_sha1": "cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5",
+    "logical_qubits": 8,
+    "u_gates": 65,
+    "cx_gates": 71
+  },
+  "verification": {
+    "routing_structure": "pass",
+    "exact_gf2_equivalence": "pass",
+    "all_logical_basis_inputs_checked": 256,
+    "full_unitary_max_absolute_amplitude_error": 1.2212453270876722e-15,
+    "full_unitary_frobenius_error": 1.1031826968272763e-14
+  },
+  "limitations": [
+    "13-SWAP global optimality is not claimed",
+    "12-SWAP nonexistence is not established",
+    "no hardware-level fidelity or calibration-aware performance claim",
+    "independent specialist review pending"
+  ]
+}
