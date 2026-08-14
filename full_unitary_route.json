@@ -1,0 +1,15 @@
+{
+  "route": "beam_search_witness",
+  "source_git_blob_sha1": "cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5",
+  "active_physical_nodes": [29,34,40,41,45,46,47,52,53],
+  "source_u_gates": 65,
+  "source_cx_gates": 71,
+  "mapped_u_gates": 65,
+  "mapped_cx_gates": 71,
+  "mapped_swaps": 13,
+  "all_logical_basis_inputs_verified": 256,
+  "max_absolute_amplitude_error": 1.2212453270876722e-15,
+  "frobenius_error": 1.1031826968272763e-14,
+  "final_mapping": {"0":46,"1":34,"2":41,"3":40,"4":53,"5":45,"6":47,"7":29},
+  "mapped_qasm": "mapped_route.qasm"
+}
