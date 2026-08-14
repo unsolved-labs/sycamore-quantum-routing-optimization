@@ -1,0 +1,24 @@
+[
+  {
+    "file": "original_vqe_8_4_10_100.qasm",
+    "operations": 136,
+    "u": 65,
+    "cx": 71,
+    "swap": 0,
+    "native_instruction_depth": 102,
+    "three_cx_swap_decomposed_depth": 102,
+    "two_qubit_native_depth": 56,
+    "two_qubit_three_cx_swap_decomposed_depth": 56
+  },
+  {
+    "file": "mapped_route.qasm",
+    "operations": 149,
+    "u": 65,
+    "cx": 71,
+    "swap": 13,
+    "native_instruction_depth": 110,
+    "three_cx_swap_decomposed_depth": 125,
+    "two_qubit_native_depth": 66,
+    "two_qubit_three_cx_swap_decomposed_depth": 84
+  }
+]
