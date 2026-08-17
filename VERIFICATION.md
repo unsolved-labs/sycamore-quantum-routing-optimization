@@ -41,6 +41,14 @@ LINEAR_EQUIVALENCE_VERIFIED
 that `benchmark.json` contains the same sequence. `benchmark.json` is therefore
 not an unchecked alternate source of the logical CX program.
 
+The hardware graph receives the same treatment. `source_sycamore_edges.json`
+freezes Q-Synth's `platform == "sycamore"` edge list from
+`src/qsynth/LayoutSynthesis/architecture.py` at the same repository commit;
+the source file's Git blob SHA-1 is
+`72e4729523db7d58bd4a2658399da590f83d1049`. `verify.py` requires the
+54-vertex/88-edge set in `benchmark.json` to equal that pinned source snapshot
+exactly before checking any route step.
+
 ### 2. Route-certificate check
 
 `verify.py` independently reconstructs the ordinary per-logical-qubit CX
@@ -48,7 +56,8 @@ dependency DAG and greedily executes every currently ready/adjacent source CX
 between the stored SWAP phases. The reconstructed schedule must equal
 `route.json` exactly.
 
-This proves the stored 13-SWAP route is legal for the frozen CX routing model.
+This proves the stored 13-SWAP route is legal for the pinned Q-Synth benchmark
+and Sycamore topology under the frozen routing model.
 
 ### 3. Exact complete-circuit check
 
@@ -109,7 +118,7 @@ Trusted:
 
 - Python interpreter semantics for the small dependency-free exact checkers;
 - the committed checker source after ordinary code review;
-- the frozen source QASM blob and hardware edge list;
+- the two frozen public-source snapshots: the source QASM and Q-Synth Sycamore edge list;
 - standard mathematical semantics of OpenQASM `u`, CX, and SWAP operations;
 - the published comparison fact taken from the cited SAT 2024 paper.
 
@@ -119,6 +128,7 @@ Not trusted as correctness oracles:
 - AI generation;
 - floating-point unitary simulation;
 - `benchmark.json`'s CX list without source-QASM comparison;
+- `benchmark.json`'s hardware edges without Q-Synth topology comparison;
 - the published 16-SWAP row as an optimality lower bound;
 - uncommitted local state or network services.
 
