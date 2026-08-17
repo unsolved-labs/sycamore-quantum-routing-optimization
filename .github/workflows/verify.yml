@@ -57,3 +57,21 @@ jobs:
           assert r['verification']['floating_point_is_correctness_oracle'] is False
           assert r['review_status'] == 'pending'
           PY
+
+  manuscript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install minimal LaTeX toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cm-super latexmk lmodern texlive-latex-base texlive-latex-recommended \
+            texlive-fonts-recommended
+
+      - name: Rebuild manuscript from source
+        run: make -C manuscript rebuild
+
+      - name: Verify committed PDF is reproducible
+        run: git diff --exit-code -- manuscript/r005_sycamore_routing.pdf
