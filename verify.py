@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Dependency-free verifier for the frozen R005 route certificate.
 
-The source CX sequence is derived directly from the pinned source QASM and must
-match benchmark.json before the route certificate is checked.
+The logical CX sequence is derived directly from the pinned source QASM and the
+hardware graph is compared against a frozen snapshot of Q-Synth's `sycamore`
+platform definition before the route certificate is checked.
 """
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ import re
 from pathlib import Path
 
 EXPECTED_SOURCE_GIT_BLOB_SHA1 = "cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5"
+EXPECTED_TOPOLOGY_GIT_BLOB_SHA1 = "72e4729523db7d58bd4a2658399da590f83d1049"
+EXPECTED_QSYNTH_COMMIT = "95a820e16ac578289ea692ce8665afb48788892d"
 
 
 def git_blob_sha(data: bytes) -> str:
@@ -38,6 +41,20 @@ def source_cx_pairs(path: Path) -> list[tuple[int, int]]:
     return pairs
 
 
+def source_topology(root: Path) -> set[frozenset[int]]:
+    record = json.loads((root / "source_sycamore_edges.json").read_text())
+    assert record["source_repository"] == "irfansha/Q-Synth"
+    assert record["source_commit"] == EXPECTED_QSYNTH_COMMIT
+    assert record["source_path"] == "src/qsynth/LayoutSynthesis/architecture.py"
+    assert record["source_git_blob_sha1"] == EXPECTED_TOPOLOGY_GIT_BLOB_SHA1
+    assert record["platform"] == "sycamore"
+    assert record["physical_qubits"] == 54
+    assert record["edge_count"] == 88
+    edges = {frozenset(edge) for edge in record["undirected_edges"]}
+    assert len(edges) == 88
+    return edges
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("route", nargs="?", default="route.json")
@@ -54,6 +71,13 @@ def main() -> None:
     )
 
     edge_set = {frozenset(x) for x in benchmark["hardware_edges"]}
+    source_edge_set = source_topology(root)
+    assert edge_set == source_edge_set, (
+        "benchmark.json hardware graph differs from the pinned Q-Synth "
+        "sycamore topology snapshot"
+    )
+    assert benchmark["physical_qubits"] == 54
+
     mapping = {
         int(k): int(v) for k, v in route["initial_mapping"].items()
     }
@@ -118,8 +142,10 @@ def main() -> None:
     assert len(route["swaps"]) == route["swap_count"] == 13
 
     print("VERIFIED")
-    print("source Git blob:", EXPECTED_SOURCE_GIT_BLOB_SHA1)
+    print("source QASM Git blob:", EXPECTED_SOURCE_GIT_BLOB_SHA1)
     print("source CX list matches benchmark.json:", len(gates))
+    print("Sycamore topology matches pinned Q-Synth source:", len(edge_set))
+    print("topology source Git blob:", EXPECTED_TOPOLOGY_GIT_BLOB_SHA1)
     print("route:", route["id"])
     print("CX gates:", len(gates))
     print("SWAPs:", len(route["swaps"]))
