@@ -32,20 +32,28 @@ does not prove that a 12-SWAP route is impossible.
 
 ## Verification
 
-The correctness oracle for the complete routed circuit is exact and does not
-evaluate gate angles numerically:
+The complete load-bearing release can be verified from a clean checkout with
+one dependency-free command:
 
 ```bash
-python verify.py
-python verify_exact_qasm_equivalence.py
-python verify_linear_equivalence.py
-python compute_qasm_depth.py original_vqe_8_4_10_100.qasm mapped_route.qasm
+python verify_release.py
 ```
 
-`verify.py` first checks two source identities: the ordered logical CX program
-must match the pinned Q-Synth QASM, and the hardware edges in `benchmark.json`
-must match the frozen Q-Synth `sycamore` definition from the same upstream
-commit. It then reconstructs the routing dependency schedule.
+That command verifies source-QASM identity, Q-Synth Sycamore-topology identity,
+the 13-SWAP routing certificate, exact symbolic full-circuit equivalence, the
+independent GF(2) structural cross-check, and the repository's depth metrics.
+Its final headline is:
+
+```text
+R005_RELEASE_VERIFIED
+```
+
+The correctness oracle for the complete routed circuit is exact and does not
+evaluate gate angles numerically. `verify.py` first checks two source
+identities: the ordered logical CX program must match the pinned Q-Synth QASM,
+and the hardware edges in `benchmark.json` must match the frozen Q-Synth
+`sycamore` definition from the same upstream commit. It then reconstructs the
+routing dependency schedule.
 
 The exact full-circuit checker tracks the logical state carried by each
 physical wire through the 13 SWAPs. Every mapped `u(...)` must be the next
@@ -56,26 +64,19 @@ of the frozen Sycamore graph. All 136 source operations must be consumed
 exactly once. This proves circuit equivalence modulo the reported initial and
 final logical-to-physical placements under the frozen dependency model.
 
-Expected headline output includes:
-
-```text
-VERIFIED
-SWAPs: 13
-EXACT_SYMBOLIC_EQUIVALENCE_VERIFIED
-LINEAR_EQUIVALENCE_VERIFIED
-```
-
 A separate NumPy simulation remains as a **secondary regression check**, not
-as the proof of circuit equivalence:
+as the proof of circuit equivalence. After installing the pinned dependency:
 
 ```bash
 python -m pip install -r requirements.txt
-python build_and_verify_full_qasm.py route.json
+python verify_release.py --with-numerical
 ```
 
-That command deterministically regenerates `mapped_route.qasm`, runs the exact
-checker, then compares the source and routed circuits numerically on all 256
-logical computational-basis inputs.
+The numerical mode also deterministically regenerates `mapped_route.qasm` and
+compares the source and routed circuits on all 256 logical computational-basis
+inputs.
+
+See `VERIFICATION.md` for the individual checker commands and trust boundary.
 
 ## Manuscript
 
@@ -99,6 +100,7 @@ reproduction procedure.
 - `benchmark.json` — frozen logical-program metadata and Sycamore graph
 - `source_sycamore_edges.json` — pinned Q-Synth Sycamore topology snapshot
 - `original_vqe_8_4_10_100.qasm` — pinned source benchmark
+- `verify_release.py` — one-command release verifier
 - `verify.py` — source-derived program/topology/routing verifier
 - `verify_exact_qasm_equivalence.py` — exact complete-circuit checker
 - `verify_linear_equivalence.py` — independent exact GF(2) CX+SWAP checker
