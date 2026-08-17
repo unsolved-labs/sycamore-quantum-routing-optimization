@@ -6,6 +6,7 @@ machine check that supports it.
 | Public statement | Manuscript location | Machine evidence | Status |
 |---|---|---|---|
 | Frozen source is Q-Synth `vqe_8_4_10_100.qasm` at the pinned commit/blob | Sec. 2, 7 | `verify.py`; `build_and_verify_full_qasm.py` Git-blob check | exact |
+| Frozen 54-qubit/88-edge Sycamore graph matches Q-Synth's pinned `platform == "sycamore"` definition | Sec. 2, 7 | `source_sycamore_edges.json`; `verify.py` | exact source correspondence |
 | Source contains 8 logical qubits, 65 `u` gates, 71 CX gates | Sec. 2 | source parsers in `verify_exact_qasm_equivalence.py` and build script | exact |
 | Route uses 13 inserted SWAPs | Thm. 1; Sec. 3 | `verify.py`; exact checker; `route.json` | exact |
 | Every SWAP is a frozen hardware edge | Thm. 1 | `verify.py`; exact checker | exact |
