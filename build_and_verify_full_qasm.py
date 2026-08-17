@@ -1,206 +1,166 @@
 #!/usr/bin/env python3
-"""Reinsert all source single-qubit gates, emit mapped QASM, and verify full-unitary equivalence.
+"""Build an exact mapped QASM and run a secondary numerical unitary regression.
 
-The source file is byte-for-byte checked against the audited Git blob SHA. The
-mapped circuit is simulated on its active physical footprint and compared on
-all 256 logical basis inputs with the original 8-qubit unitary.
+The emitted mapped QASM preserves every source u(...) parameter expression
+symbolically. The authoritative full-circuit correctness oracle is
+verify_exact_qasm_equivalence.py. This script additionally evaluates the same
+expressions numerically and compares all 256 logical computational-basis
+columns as a regression/cross-check.
 """
 from __future__ import annotations
-import argparse, ast, cmath, hashlib, json, math, re
-from pathlib import Path
+
+import argparse, ast, cmath, hashlib, json, math, re, subprocess, sys
 from dataclasses import dataclass
+from pathlib import Path
 import numpy as np
 
-ROOT=Path(__file__).resolve().parent
-SOURCE=ROOT/'original_vqe_8_4_10_100.qasm'
-EXPECTED_GIT_BLOB='cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5'
+ROOT = Path(__file__).resolve().parent
+SOURCE = ROOT / "original_vqe_8_4_10_100.qasm"
+EXPECTED_GIT_BLOB = "cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5"
 
 @dataclass(frozen=True)
 class Op:
-    kind:str
-    qubits:tuple[int,...]
-    params:tuple[float,...]=()
-    cx_index:int|None=None
+    kind: str
+    qubits: tuple[int, ...]
+    params: tuple[str, ...] = ()
+    cx_index: int | None = None
 
+def git_blob_sha(data: bytes) -> str:
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
-def git_blob_sha(data:bytes)->str:
-    return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
-
-
-def eval_angle(expr:str)->float:
-    tree=ast.parse(expr.strip(),mode='eval')
-    def go(n):
-        if isinstance(n,ast.Expression): return go(n.body)
-        if isinstance(n,ast.Constant) and isinstance(n.value,(int,float)): return float(n.value)
-        if isinstance(n,ast.Name) and n.id=='pi': return math.pi
-        if isinstance(n,ast.UnaryOp) and isinstance(n.op,(ast.UAdd,ast.USub)):
-            v=go(n.operand); return v if isinstance(n.op,ast.UAdd) else -v
-        if isinstance(n,ast.BinOp) and isinstance(n.op,(ast.Add,ast.Sub,ast.Mult,ast.Div)):
-            a,b=go(n.left),go(n.right)
-            if isinstance(n.op,ast.Add):return a+b
-            if isinstance(n.op,ast.Sub):return a-b
-            if isinstance(n.op,ast.Mult):return a*b
-            return a/b
-        raise ValueError(f'unsafe angle expression: {expr!r}')
+def eval_angle(expr: str) -> float:
+    tree = ast.parse(expr.strip(), mode="eval")
+    def go(node):
+        if isinstance(node, ast.Expression): return go(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)): return float(node.value)
+        if isinstance(node, ast.Name) and node.id == "pi": return math.pi
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            value = go(node.operand); return value if isinstance(node.op, ast.UAdd) else -value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+            left, right = go(node.left), go(node.right)
+            if isinstance(node.op, ast.Add): return left + right
+            if isinstance(node.op, ast.Sub): return left - right
+            if isinstance(node.op, ast.Mult): return left * right
+            return left / right
+        raise ValueError(f"unsafe angle expression: {expr!r}")
     return float(go(tree))
 
-
-def parse_source()->list[Op]:
-    data=SOURCE.read_bytes()
-    assert git_blob_sha(data)==EXPECTED_GIT_BLOB
-    ops=[]; cxidx=0
-    ure=re.compile(r'^u\((.*)\) q\[(\d+)\];$')
-    cxre=re.compile(r'^cx q\[(\d+)\],q\[(\d+)\];$')
-    for line in data.decode().splitlines():
-        line=line.strip()
-        if not line or line.startswith(('OPENQASM','include','qreg')):continue
-        m=ure.match(line)
+def parse_source() -> list[Op]:
+    data = SOURCE.read_bytes(); assert git_blob_sha(data) == EXPECTED_GIT_BLOB
+    ops = []; cx_index = 0
+    u_re = re.compile(r"^u\((.*)\) q\[(\d+)\];$"); cx_re = re.compile(r"^cx q\[(\d+)\],q\[(\d+)\];$")
+    for raw in data.decode().splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("OPENQASM", "include", "qreg")): continue
+        m = u_re.match(line)
         if m:
-            parts=[x.strip() for x in m.group(1).split(',')]
-            assert len(parts)==3
-            ops.append(Op('u',(int(m.group(2)),),tuple(eval_angle(x) for x in parts)))
-            continue
-        m=cxre.match(line)
+            params = tuple(x.strip() for x in m.group(1).split(",")); assert len(params) == 3
+            ops.append(Op("u", (int(m.group(2)),), params)); continue
+        m = cx_re.match(line)
         if m:
-            ops.append(Op('cx',(int(m.group(1)),int(m.group(2))),(),cxidx));cxidx+=1;continue
-        raise ValueError(f'unparsed source line: {line}')
-    assert cxidx==71
+            ops.append(Op("cx", (int(m.group(1)), int(m.group(2))), (), cx_index)); cx_index += 1; continue
+        raise ValueError(f"unparsed source line: {line}")
+    assert cx_index == 71 and sum(op.kind == "u" for op in ops) == 65
     return ops
 
+def u_matrix(params: tuple[str, ...]) -> np.ndarray:
+    theta, phi, lam = (eval_angle(x) for x in params); c = math.cos(theta / 2); s = math.sin(theta / 2)
+    return np.array([[c, -cmath.exp(1j * lam) * s], [cmath.exp(1j * phi) * s, cmath.exp(1j * (phi + lam)) * c]], dtype=np.complex128)
 
-def u_matrix(theta,phi,lam):
-    c=math.cos(theta/2);s=math.sin(theta/2)
-    return np.array([[c,-cmath.exp(1j*lam)*s],[cmath.exp(1j*phi)*s,cmath.exp(1j*(phi+lam))*c]],dtype=np.complex128)
+def apply_u(state, n, q, matrix):
+    bit = 1 << q
+    for base in range(1 << n):
+        if base & bit: continue
+        i0, i1 = base, base | bit; a = state[i0].copy(); b = state[i1].copy()
+        state[i0] = matrix[0, 0] * a + matrix[0, 1] * b; state[i1] = matrix[1, 0] * a + matrix[1, 1] * b
 
+def apply_cx(state, n, control, target):
+    cb = 1 << control; tb = 1 << target
+    for i in range(1 << n):
+        if (i & cb) and not (i & tb):
+            j = i | tb; state[[i, j]] = state[[j, i]]
 
-def apply_u(state:np.ndarray,n:int,q:int,U:np.ndarray)->None:
-    bit=1<<q
-    for base in range(1<<n):
-        if base&bit:continue
-        i0=base;i1=base|bit
-        a=state[i0].copy();b=state[i1].copy()
-        state[i0]=U[0,0]*a+U[0,1]*b
-        state[i1]=U[1,0]*a+U[1,1]*b
+def apply_swap(state, n, a, b):
+    if a == b: return
+    ab = 1 << a; bb = 1 << b
+    for i in range(1 << n):
+        has_a = bool(i & ab); has_b = bool(i & bb)
+        if has_a == has_b or has_a: continue
+        j = i ^ ab ^ bb; state[[i, j]] = state[[j, i]]
 
-
-def apply_cx(state:np.ndarray,n:int,c:int,t:int)->None:
-    cb=1<<c;tb=1<<t
-    for i in range(1<<n):
-        if (i&cb) and not(i&tb):
-            j=i|tb;state[[i,j]]=state[[j,i]]
-
-
-def apply_swap(state:np.ndarray,n:int,a:int,b:int)->None:
-    if a==b:return
-    ab=1<<a;bb=1<<b
-    for i in range(1<<n):
-        ba=bool(i&ab);bbv=bool(i&bb)
-        if ba==bbv or ba:continue
-        j=i^ab^bb;state[[i,j]]=state[[j,i]]
-
-
-def simulate(n:int,ops:list[Op],initial:np.ndarray)->np.ndarray:
-    st=initial.copy()
+def simulate(n, ops, initial):
+    state = initial.copy()
     for op in ops:
-        if op.kind=='u': apply_u(st,n,op.qubits[0],u_matrix(*op.params))
-        elif op.kind=='cx': apply_cx(st,n,*op.qubits)
-        elif op.kind=='swap': apply_swap(st,n,*op.qubits)
+        if op.kind == "u": apply_u(state, n, op.qubits[0], u_matrix(op.params))
+        elif op.kind == "cx": apply_cx(state, n, *op.qubits)
+        elif op.kind == "swap": apply_swap(state, n, *op.qubits)
         else: raise AssertionError(op.kind)
-    return st
+    return state
 
-
-def qasm_angle(x:float)->str:
-    return format(x,'.17g')
-
-
-def build(route_name:str)->dict:
-    source_ops=parse_source()
-    route=json.loads((ROOT/route_name).read_text())
-    bench=json.loads((ROOT/'benchmark.json').read_text())
-    assert [(o.qubits[0],o.qubits[1]) for o in source_ops if o.kind=='cx']==[tuple(x) for x in bench['cx_gates']]
-
-    pending=[[] for _ in range(8)]
-    before=[{} for _ in range(71)]
+def build(route_name: str) -> dict:
+    source_ops = parse_source(); route = json.loads((ROOT / route_name).read_text()); benchmark = json.loads((ROOT / "benchmark.json").read_text())
+    source_cx = [(op.qubits[0], op.qubits[1]) for op in source_ops if op.kind == "cx"]
+    assert source_cx == [tuple(x) for x in benchmark["cx_gates"]]
+    pending = [[] for _ in range(8)]; before = [{} for _ in range(71)]
     for op in source_ops:
-        if op.kind=='u':pending[op.qubits[0]].append(op)
+        if op.kind == "u": pending[op.qubits[0]].append(op)
         else:
-            a,b=op.qubits;before[op.cx_index][a]=pending[a];before[op.cx_index][b]=pending[b];pending[a]=[];pending[b]=[]
-    tails=pending
-
-    mapping={int(q):int(p) for q,p in route['initial_mapping'].items()}
-    mapped=[];consumed_u=0;seen_cx=[]
-    def emit_cx(idx1:int):
-        nonlocal consumed_u
-        idx=idx1-1;a,b=bench['cx_gates'][idx]
-        for q in (a,b):
-            for uop in before[idx][q]:
-                mapped.append(Op('u',(mapping[q],),uop.params));consumed_u+=1
-        mapped.append(Op('cx',(mapping[a],mapping[b]),(),idx));seen_cx.append(idx)
-    for idx1 in route['schedule'][0]['executed_cx_1_based']:emit_cx(idx1)
-    for (u,v),phase in zip(route['swaps'],route['schedule'][1:]):
-        mapped.append(Op('swap',(u,v)))
-        for q,p in list(mapping.items()):
-            if p==u:mapping[q]=v
-            elif p==v:mapping[q]=u
-        for idx1 in phase['executed_cx_1_based']:emit_cx(idx1)
+            a, b = op.qubits; before[op.cx_index][a] = pending[a]; before[op.cx_index][b] = pending[b]; pending[a] = []; pending[b] = []
+    tails = pending; mapping = {int(q): int(p) for q, p in route["initial_mapping"].items()}; mapped = []; seen_cx = []
+    def emit_cx(index_1_based: int) -> None:
+        index = index_1_based - 1; a, b = source_cx[index]
+        for q in (a, b):
+            for u_op in before[index][q]: mapped.append(Op("u", (mapping[q],), u_op.params))
+        mapped.append(Op("cx", (mapping[a], mapping[b]), (), index)); seen_cx.append(index)
+    for index_1_based in route["schedule"][0]["executed_cx_1_based"]: emit_cx(index_1_based)
+    for (u, v), phase in zip(route["swaps"], route["schedule"][1:]):
+        mapped.append(Op("swap", (u, v)))
+        for q, p in list(mapping.items()):
+            if p == u: mapping[q] = v
+            elif p == v: mapping[q] = u
+        for index_1_based in phase["executed_cx_1_based"]: emit_cx(index_1_based)
     for q in range(8):
-        for uop in tails[q]:mapped.append(Op('u',(mapping[q],),uop.params));consumed_u+=1
-    assert consumed_u==sum(o.kind=='u' for o in source_ops)==65
-    assert len(seen_cx)==71 and len(set(seen_cx))==71
+        for u_op in tails[q]: mapped.append(Op("u", (mapping[q],), u_op.params))
+    assert sum(op.kind == "u" for op in mapped) == 65; assert sum(op.kind == "cx" for op in mapped) == 71; assert sum(op.kind == "swap" for op in mapped) == 13
+    assert len(seen_cx) == 71 and len(set(seen_cx)) == 71
+    original_per = [[] for _ in range(8)]; mapped_per = [[] for _ in range(8)]
+    for op in source_ops:
+        if op.kind == "cx":
+            for q in op.qubits: original_per[q].append(op.cx_index)
+    for index in seen_cx:
+        for q in source_cx[index]: mapped_per[q].append(index)
+    assert original_per == mapped_per
 
-    orig_per=[[] for _ in range(8)];new_per=[[] for _ in range(8)]
-    for o in source_ops:
-        if o.kind=='cx':
-            for q in o.qubits:orig_per[q].append(o.cx_index)
-    for idx in seen_cx:
-        for q in bench['cx_gates'][idx]:new_per[q].append(idx)
-    assert orig_per==new_per
+    out = ROOT / f"mapped_{Path(route_name).stem}.qasm"
+    with out.open("w") as handle:
+        handle.write('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[54];\n')
+        for op in mapped:
+            if op.kind == "u": handle.write(f"u({','.join(op.params)}) q[{op.qubits[0]}];\n")
+            elif op.kind == "cx": handle.write(f"cx q[{op.qubits[0]}],q[{op.qubits[1]}];\n")
+            else: handle.write(f"swap q[{op.qubits[0]}],q[{op.qubits[1]}];\n")
 
-    active=sorted({p for p in route['initial_mapping'].values()}|{p for e in route['swaps'] for p in e})
-    loc={p:i for i,p in enumerate(active)};n=len(active)
-    assert 8 <= n <= 9
+    subprocess.run([sys.executable, str(ROOT / "verify_exact_qasm_equivalence.py")], cwd=ROOT, check=True)
 
-    U0=np.eye(1<<8,dtype=np.complex128)
-    original_final=simulate(8,source_ops,U0)
-
-    embed=np.zeros((1<<n,1<<8),dtype=np.complex128)
-    initmap={int(q):loc[int(p)] for q,p in route['initial_mapping'].items()}
-    for x in range(1<<8):
-        y=0
+    active = sorted(set(route["initial_mapping"].values()) | {p for edge in route["swaps"] for p in edge}); location = {p: i for i, p in enumerate(active)}; n_active = len(active); assert 8 <= n_active <= 9
+    original_final = simulate(8, source_ops, np.eye(1 << 8, dtype=np.complex128))
+    embed = np.zeros((1 << n_active, 1 << 8), dtype=np.complex128); initial_mapping = {int(q): location[int(p)] for q, p in route["initial_mapping"].items()}
+    for logical_basis in range(1 << 8):
+        physical_basis = 0
         for q in range(8):
-            if x>>q&1:y|=1<<initmap[q]
-        embed[y,x]=1
-    mapped_local=[Op(o.kind,tuple(loc[p] for p in o.qubits),o.params,o.cx_index) for o in mapped]
-    actual=simulate(n,mapped_local,embed)
-
-    finalmap={q:loc[p] for q,p in mapping.items()}
-    expected=np.zeros_like(actual)
-    for y in range(1<<8):
-        py=0
+            if logical_basis >> q & 1: physical_basis |= 1 << initial_mapping[q]
+        embed[physical_basis, logical_basis] = 1
+    mapped_local = [Op(op.kind, tuple(location[p] for p in op.qubits), op.params, op.cx_index) for op in mapped]
+    actual = simulate(n_active, mapped_local, embed); final_mapping = {q: location[p] for q, p in mapping.items()}; expected = np.zeros_like(actual)
+    for logical_basis in range(1 << 8):
+        physical_basis = 0
         for q in range(8):
-            if y>>q&1:py|=1<<finalmap[q]
-        expected[py,:]=original_final[y,:]
-    delta=actual-expected
-    maxerr=float(np.max(np.abs(delta)))
-    froerr=float(np.linalg.norm(delta))
-    assert maxerr<2e-13,(maxerr,froerr)
-
-    out=ROOT/f"mapped_{Path(route_name).stem}.qasm"
-    with out.open('w') as f:
-        f.write('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[54];\n')
-        for o in mapped:
-            if o.kind=='u':f.write(f"u({qasm_angle(o.params[0])},{qasm_angle(o.params[1])},{qasm_angle(o.params[2])}) q[{o.qubits[0]}];\n")
-            elif o.kind=='cx':f.write(f"cx q[{o.qubits[0]}],q[{o.qubits[1]}];\n")
-            else:f.write(f"swap q[{o.qubits[0]}],q[{o.qubits[1]}];\n")
-
-    result={'route':route['id'],'source_git_blob_sha1':EXPECTED_GIT_BLOB,'active_physical_nodes':active,
-            'source_u_gates':65,'source_cx_gates':71,'mapped_u_gates':65,'mapped_cx_gates':71,
-            'mapped_swaps':len(route['swaps']),'all_logical_basis_inputs_verified':256,
-            'max_absolute_amplitude_error':maxerr,'frobenius_error':froerr,
-            'final_mapping':{str(q):p for q,p in mapping.items()},'mapped_qasm':out.name}
-    (ROOT/f"full_unitary_{Path(route_name).stem}.json").write_text(json.dumps(result,indent=2)+'\n')
+            if logical_basis >> q & 1: physical_basis |= 1 << final_mapping[q]
+        expected[physical_basis, :] = original_final[logical_basis, :]
+    delta = actual - expected; max_error = float(np.max(np.abs(delta))); frobenius_error = float(np.linalg.norm(delta)); assert max_error < 2e-13, (max_error, frobenius_error)
+    result = {"route": route["id"], "source_git_blob_sha1": EXPECTED_GIT_BLOB, "mapped_qasm": out.name, "symbolic_parameter_preservation": True, "exact_full_circuit_checker": "verify_exact_qasm_equivalence.py", "exact_full_circuit_status": "PASS", "numerical_regression_role": "secondary_cross_check_only", "active_physical_nodes": active, "source_u_gates": 65, "source_cx_gates": 71, "mapped_u_gates": 65, "mapped_cx_gates": 71, "mapped_swaps": len(route["swaps"]), "all_logical_basis_inputs_numerically_checked": 256, "max_absolute_amplitude_error": max_error, "frobenius_error": frobenius_error, "final_mapping": {str(q): p for q, p in mapping.items()}}
+    (ROOT / f"full_unitary_{Path(route_name).stem}.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 
-if __name__=='__main__':
-    ap=argparse.ArgumentParser();ap.add_argument('route',nargs='?',default='route.json');a=ap.parse_args()
-    r=build(a.route);print('FULL_UNITARY_EQUIVALENCE_VERIFIED');print(json.dumps(r,indent=2))
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(); parser.add_argument("route", nargs="?", default="route.json"); args = parser.parse_args()
+    report = build(args.route); print("EXACT_QASM_BUILT"); print("NUMERICAL_UNITARY_REGRESSION_VERIFIED"); print(json.dumps(report, indent=2))
