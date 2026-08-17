@@ -42,10 +42,33 @@ R005 freezes the source circuit to:
 `original_vqe_8_4_10_100.qasm` is checked against that blob SHA before
 verification.
 
+## Pinned Sycamore topology source
+
+At the same Q-Synth commit, the public command-line interface identifies the
+`sycamore` platform as a 54-qubit Google Sycamore topology. The exact coupling
+map is defined in:
+
+- repository: `irfansha/Q-Synth`
+- commit: `95a820e16ac578289ea692ce8665afb48788892d`
+- path: `src/qsynth/LayoutSynthesis/architecture.py`
+- Git blob SHA-1: `72e4729523db7d58bd4a2658399da590f83d1049`
+- platform branch: `platform == "sycamore"`
+- physical qubits: 54
+- undirected edges before bidirectional expansion: 88
+
+`source_sycamore_edges.json` is a frozen local transcription of that exact
+88-edge list. `verify.py` requires the set of edges in `benchmark.json` to
+match the frozen source snapshot exactly before it checks the route.
+
+This removes an earlier provenance ambiguity: `benchmark.json` is no longer an
+unreferenced hardware definition. It is verified against the same pinned
+Q-Synth code base that supplies the logical benchmark.
+
 ## Frozen hardware model
 
-`benchmark.json` is the release's canonical 54-vertex, 88-edge undirected
-coupling graph. All route verification is against that exact graph.
+`benchmark.json` remains the release's canonical 54-vertex, 88-edge undirected
+coupling graph used by all route/equivalence checks, but its edge set must match
+`source_sycamore_edges.json` exactly.
 
 The public comparison is meaningful only under compatible routing semantics.
 This release does not claim equivalence to variants using bridges, relaxed
