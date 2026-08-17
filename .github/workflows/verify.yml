@@ -5,37 +5,73 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify route and exact GF(2) equivalence
+          cache: 'pip'
+
+      - name: Verify exact release from pinned public sources
+        run: python verify_release.py
+
+      - name: Regenerate exact mapped QASM and run numerical regression
         run: |
-          python verify.py
-          python verify_linear_equivalence.py
-      - name: Verify depth metrics
-        run: |
-          python compute_qasm_depth.py original_vqe_8_4_10_100.qasm mapped_route.qasm
-          python - <<'PY'
-          import json
-          r=json.load(open('depth_metrics.json'))
-          assert r[0]['native_instruction_depth']==102
-          assert r[1]['native_instruction_depth']==110
-          assert r[1]['swap']==13
-          assert r[1]['cx']==71
-          PY
-      - name: Full all-basis unitary check
-        run: |
-          python -m pip install --disable-pip-version-check numpy
+          python -m pip install --disable-pip-version-check -r requirements.txt
           python build_and_verify_full_qasm.py route.json
           python - <<'PY'
           import json
-          r=json.load(open('full_unitary_route.json'))
-          assert r['mapped_swaps']==13
-          assert r['all_logical_basis_inputs_verified']==256
+          r = json.load(open('full_unitary_route.json'))
+          assert r['symbolic_parameter_preservation'] is True
+          assert r['exact_full_circuit_status'] == 'PASS'
+          assert r['mapped_swaps'] == 13
+          assert r['all_logical_basis_inputs_numerically_checked'] == 256
           assert r['max_absolute_amplitude_error'] < 2e-13
+          e = json.load(open('exact_equivalence_report.json'))
+          assert e['status'] == 'PASS'
+          assert e['floating_point_used_in_correctness_oracle'] is False
           PY
+
+      - name: Verify generated release artifacts are committed
+        run: git diff --exit-code -- mapped_route.qasm exact_equivalence_report.json
+
+      - name: Verify public claim remains scoped
+        run: |
+          python - <<'PY'
+          import json
+          r = json.load(open('verification-report.json'))
+          assert r['status'] == 'PASS'
+          assert r['claim']['swap_count'] == 13
+          assert r['claim']['global_optimality_claimed'] is False
+          assert r['claim']['twelve_swap_unsat_claimed'] is False
+          assert r['verification']['logical_program_matches_pinned_qasm'] == 'PASS'
+          assert r['verification']['hardware_graph_matches_pinned_qsynth_sycamore'] == 'PASS'
+          assert r['verification']['exact_symbolic_full_circuit'] == 'PASS'
+          assert r['verification']['floating_point_is_correctness_oracle'] is False
+          assert r['review_status'] == 'pending'
+          PY
+
+  manuscript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install minimal LaTeX toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cm-super latexmk lmodern texlive-latex-base texlive-latex-recommended \
+            texlive-fonts-recommended
+
+      - name: Rebuild manuscript from source
+        run: make -C manuscript rebuild
+
+      - name: Verify committed PDF is reproducible
+        run: git diff --exit-code -- manuscript/r005_sycamore_routing.pdf

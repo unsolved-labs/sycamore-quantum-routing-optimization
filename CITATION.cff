@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this research release, please cite the repository and the pinned comparison source."
+title: "R005: A 13-SWAP layout for the Q-Synth VQE(8/71) Sycamore benchmark"
+type: software
+authors:
+  - name: "Unsolved Labs"
+version: "R005"
+date-released: 2026-08-17
+repository-code: "https://github.com/unsolved-labs/sycamore-quantum-routing-optimization"
+keywords:
+  - quantum circuit routing
+  - layout synthesis
+  - Sycamore
+  - verification
+  - Q-Synth
+references:
+  - type: conference-paper
+    title: "Optimal Layout Synthesis for Deep Quantum Circuits on NISQ Processors with 100+ Qubits"
+    authors:
+      - family-names: Shaik
+        given-names: Irfansha
+      - family-names: van de Pol
+        given-names: Jaco
+    year: 2024
+    doi: "10.4230/LIPIcs.SAT.2024.26"
