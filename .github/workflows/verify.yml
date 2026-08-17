@@ -19,23 +19,8 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Verify source, route, and exact circuit semantics
-        run: |
-          python verify.py
-          python verify_exact_qasm_equivalence.py
-          python verify_linear_equivalence.py
-
-      - name: Verify depth metrics
-        run: |
-          python compute_qasm_depth.py original_vqe_8_4_10_100.qasm mapped_route.qasm
-          python - <<'PY'
-          import json
-          r = json.load(open('depth_metrics.json'))
-          assert r[0]['native_instruction_depth'] == 102
-          assert r[1]['native_instruction_depth'] == 110
-          assert r[1]['swap'] == 13
-          assert r[1]['cx'] == 71
-          PY
+      - name: Verify exact release from pinned public sources
+        run: python verify_release.py
 
       - name: Regenerate exact mapped QASM and run numerical regression
         run: |
@@ -55,10 +40,9 @@ jobs:
           PY
 
       - name: Verify generated release artifacts are committed
-        run: |
-          git diff --exit-code -- mapped_route.qasm exact_equivalence_report.json
+        run: git diff --exit-code -- mapped_route.qasm exact_equivalence_report.json
 
-      - name: Verify machine-readable release statement
+      - name: Verify public claim remains scoped
         run: |
           python - <<'PY'
           import json
@@ -66,6 +50,9 @@ jobs:
           assert r['status'] == 'PASS'
           assert r['claim']['swap_count'] == 13
           assert r['claim']['global_optimality_claimed'] is False
+          assert r['claim']['twelve_swap_unsat_claimed'] is False
+          assert r['verification']['logical_program_matches_pinned_qasm'] == 'PASS'
+          assert r['verification']['hardware_graph_matches_pinned_qsynth_sycamore'] == 'PASS'
           assert r['verification']['exact_symbolic_full_circuit'] == 'PASS'
           assert r['verification']['floating_point_is_correctness_oracle'] is False
           assert r['review_status'] == 'pending'
