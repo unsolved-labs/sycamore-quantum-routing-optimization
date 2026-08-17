@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            latexmk texlive-latex-base texlive-latex-recommended \
+            latexmk lmodern texlive-latex-base texlive-latex-recommended \
             texlive-fonts-recommended
       - name: Build manuscript
         run: make -C manuscript
