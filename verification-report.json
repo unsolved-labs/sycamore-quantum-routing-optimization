@@ -1,40 +1,37 @@
 {
+  "schema_version": 2,
   "release": "R005",
-  "instance": "vqe_8_4_10_100_on_sycamore54",
-  "baseline": {
-    "source": "Shaik and van de Pol, SAT 2024, Table 3",
-    "q_synth2": "timeout",
-    "tb_olsq2_swaps": 16,
-    "tb_olsq2_depth": 111
-  },
-  "result": {
-    "swaps": 13,
-    "inserted_swap_reduction": 3,
-    "inserted_swap_reduction_percent": 18.75,
-    "added_cx_if_three_per_swap": 39,
-    "baseline_added_cx_if_three_per_swap": 48,
-    "native_instruction_dag_depth": 110
+  "status": "PASS",
+  "claim": {
+    "benchmark": "Q-Synth vqe_8_4_10_100 / vqe(8/71)",
+    "platform": "frozen Sycamore-54 coupling graph",
+    "swap_count": 13,
+    "published_comparison_swap_count": 16,
+    "swap_reduction_percent": 18.75,
+    "native_instruction_dag_depth": 110,
+    "global_optimality_claimed": false,
+    "twelve_swap_unsat_claimed": false
   },
   "source": {
     "repository": "irfansha/Q-Synth",
     "commit": "95a820e16ac578289ea692ce8665afb48788892d",
     "path": "Benchmarks/SAT-24/VQE/vqe_8_4_10_100.qasm",
     "git_blob_sha1": "cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5",
-    "logical_qubits": 8,
-    "u_gates": 65,
-    "cx_gates": 71
+    "paper_doi": "10.4230/LIPIcs.SAT.2024.26"
   },
   "verification": {
-    "routing_structure": "pass",
-    "exact_gf2_equivalence": "pass",
-    "all_logical_basis_inputs_checked": 256,
-    "full_unitary_max_absolute_amplitude_error": 1.2212453270876722e-15,
-    "full_unitary_frobenius_error": 1.1031826968272763e-14
+    "route_source_derived": "PASS",
+    "exact_symbolic_full_circuit": "PASS",
+    "gf2_linear_cross_check": "PASS",
+    "numerical_all_basis_regression": "secondary",
+    "depth_check": "PASS",
+    "symbolic_qasm_parameters_preserved": true,
+    "floating_point_is_correctness_oracle": false
   },
-  "limitations": [
-    "13-SWAP global optimality is not claimed",
-    "12-SWAP nonexistence is not established",
-    "no hardware-level fidelity or calibration-aware performance claim",
-    "independent specialist review pending"
-  ]
+  "trust_boundary": {
+    "search_generation_trusted": false,
+    "ai_generation_trusted": false,
+    "baseline_16_is_lower_bound": false
+  },
+  "review_status": "pending"
 }
