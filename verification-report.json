@@ -4,7 +4,7 @@
   "status": "PASS",
   "claim": {
     "benchmark": "Q-Synth vqe_8_4_10_100 / vqe(8/71)",
-    "platform": "frozen Sycamore-54 coupling graph",
+    "platform": "Q-Synth sycamore topology snapshot, 54 qubits / 88 undirected edges",
     "swap_count": 13,
     "published_comparison_swap_count": 16,
     "swap_reduction_percent": 18.75,
@@ -15,11 +15,15 @@
   "source": {
     "repository": "irfansha/Q-Synth",
     "commit": "95a820e16ac578289ea692ce8665afb48788892d",
-    "path": "Benchmarks/SAT-24/VQE/vqe_8_4_10_100.qasm",
-    "git_blob_sha1": "cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5",
+    "qasm_path": "Benchmarks/SAT-24/VQE/vqe_8_4_10_100.qasm",
+    "qasm_git_blob_sha1": "cdcb957d2c8f9a9f25fa5a530b80d8b6e7bd8af5",
+    "topology_path": "src/qsynth/LayoutSynthesis/architecture.py",
+    "topology_git_blob_sha1": "72e4729523db7d58bd4a2658399da590f83d1049",
     "paper_doi": "10.4230/LIPIcs.SAT.2024.26"
   },
   "verification": {
+    "logical_program_matches_pinned_qasm": "PASS",
+    "hardware_graph_matches_pinned_qsynth_sycamore": "PASS",
     "route_source_derived": "PASS",
     "exact_symbolic_full_circuit": "PASS",
     "gf2_linear_cross_check": "PASS",
